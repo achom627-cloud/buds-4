@@ -9,45 +9,319 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.BluetoothConnected
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.Hearing
-import androidx.compose.material.icons.filled.NoiseControlOff
-import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.rounded.BluetoothConnected
+import androidx.compose.material.icons.rounded.Headphones
+import androidx.compose.material.icons.rounded.Hearing
+import androidx.compose.material.icons.rounded.NoiseAware
+import androidx.compose.material.icons.rounded.NoiseControlOff
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val mac = intent?.getStringExtra("DEVICE_MAC")
-
         setContent {
             val context = LocalContext.current
-            val darkTheme = true
-            val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                dynamicDarkColorScheme(context)
-            } else {
-                darkColorScheme()
+            val scheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicDarkColorScheme(context) else darkColorScheme()
+            MaterialTheme(colorScheme = scheme) {
+                BudsFullDashboard()
             }
+        }
+    }
+}
 
-            MaterialTheme(colorScheme = colorScheme) {
-                BudsSheetScreen(
-                    mac = mac,
-                    onDismiss = { finish() }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BudsFullDashboard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val connected by BudsProtocol.connected.collectAsState()
+    val name by BudsProtocol.deviceName.collectAsState()
+    val ancMode by BudsProtocol.ancMode.collectAsState()
+    val battery by BudsProtocol.battery.collectAsState()
+
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        scope.launch { BudsProtocol.connect(null) }
+        context.startForegroundService(Intent(context, BudsMonitorService::class.java))
+    }
+
+    LaunchedEffect(Unit) {
+        val perms = mutableListOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permLauncher.launch(perms.toTypedArray())
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+                            MaterialTheme.colorScheme.surface,
+                            MaterialTheme.colorScheme.surface
+                        )
+                    )
+                )
+                .padding(innerPadding)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Верхний хедер в стиле Pixel Buds MD3
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = name,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = if (connected) "● Подключено" else "○ Нажми справа для коннекта",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (connected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    LargeFloatingActionButton(
+                        onClick = { scope.launch { BudsProtocol.connect(null) } },
+                        shape = RoundedCornerShape(24.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Icon(Icons.Rounded.BluetoothConnected, contentDescription = null)
+                    }
+                }
+
+                // Большие кольца батареи MD3 Expressive
+                Card(
+                    shape = RoundedCornerShape(36.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 28.dp, horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BatteryRing("Л", battery.left)
+                        BatteryRing("П", battery.right)
+                        BatteryRing("Кейс", battery.case)
+                    }
+                }
+
+                // Большие пилюли переключения режимов (Шумодав = 2, Выкл = 1, Прозрачность = 4)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Управление звуком",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                    )
+
+                    ExpressiveModeCard(
+                        title = "Шумоподавление",
+                        subtitle = "Блокирует внешний шум",
+                        icon = Icons.Rounded.NoiseAware,
+                        selected = ancMode == 2,
+                        onClick = { scope.launch { BudsProtocol.setAncMode(2) } }
+                    )
+
+                    ExpressiveModeCard(
+                        title = "Прозрачность",
+                        subtitle = "Слышно всё вокруг",
+                        icon = Icons.Rounded.Hearing,
+                        selected = ancMode == 4,
+                        onClick = { scope.launch { BudsProtocol.setAncMode(4) } }
+                    )
+
+                    ExpressiveModeCard(
+                        title = "Выключено",
+                        subtitle = "Пассивная изоляция",
+                        icon = Icons.Rounded.NoiseControlOff,
+                        selected = ancMode == 1,
+                        onClick = { scope.launch { BudsProtocol.setAncMode(1) } }
+                    )
+                }
+
+                // Кнопка тестирования или разрешения поверх окон
+                if (!Settings.canDrawOverlays(context)) {
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text("Включить авто-вылет при открытии кейса")
+                    }
+                } else {
+                    FilledTonalButton(
+                        onClick = { context.startActivity(Intent(context, PopupActivity::class.java)) },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Icon(Icons.Rounded.NotificationsActive, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Проверить всплывающее окно кейса")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BatteryRing(label: String, percent: Int) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(84.dp)) {
+            CircularProgressIndicator(
+                progress = { 1f },
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                strokeWidth = 8.dp
+            )
+            CircularProgressIndicator(
+                progress = { (percent / 100f).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 8.dp,
+                strokeCap = StrokeCap.Round
+            )
+            Text(
+                text = "$percent%",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun ExpressiveModeCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        animationSpec = tween(250)
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        animationSpec = tween(250)
+    )
+    val corner by animateDpAsState(
+        targetValue = if (selected) 32.dp else 22.dp,
+        animationSpec = tween(250)
+    )
+
+    Surface(
+        shape = RoundedCornerShape(corner),
+        color = bgColor,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(corner))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = if (selected) MaterialTheme.colorScheme.onPrimary else contentColor
+                    )
+                }
+            }
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = contentColor
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = 0.75f)
                 )
             }
         }
@@ -56,230 +330,57 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BudsSheetScreen(mac: String?, onDismiss: () -> Unit) {
-    val context = LocalContext.current
+fun BudsPopupSheet(mac: String?, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-
-    val connected by BudsProtocol.connected.collectAsState()
-    val name by BudsProtocol.deviceName.collectAsState()
     val ancMode by BudsProtocol.ancMode.collectAsState()
-    val ancLevel by BudsProtocol.ancLevel.collectAsState()
-    val gameMode by BudsProtocol.gameMode.collectAsState()
-    val dualConn by BudsProtocol.dualConn.collectAsState()
     val battery by BudsProtocol.battery.collectAsState()
-
-    val permLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        scope.launch { BudsProtocol.connect(mac) }
-    }
+    val name by BudsProtocol.deviceName.collectAsState()
 
     LaunchedEffect(Unit) {
-        permLauncher.launch(
-            arrayOf(
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_SCAN
-            )
-        )
+        BudsProtocol.connect(mac)
     }
-
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.94f),
+        scrimColor = Color.Black.copy(alpha = 0.35f)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Шапка попапа при открытии кейса
+            Text(name, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Headphones,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-                    Column {
-                        Text(
-                            text = name,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = if (connected) "RFCOMM ch15 подключен" else "Нажми для подключения",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-
-                FilledTonalIconButton(onClick = { scope.launch { BudsProtocol.connect(mac) } }) {
-                    Icon(Icons.Default.BluetoothConnected, contentDescription = "Connect")
-                }
+                BatteryRing("Л", battery.left)
+                BatteryRing("П", battery.right)
+                BatteryRing("Кейс", battery.case)
             }
 
-            // Карточки заряда L / R / Кейс
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                BatteryCard("Левый", battery.left, Modifier.weight(1f))
-                BatteryCard("Правый", battery.right, Modifier.weight(1f))
-                BatteryCard("Кейс", battery.case, Modifier.weight(1f))
-            }
-
-            // Переключатель ANC (cat=04 op=04: 04 / 01 / 02)
-            Text(
-                "Шумоподавление",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val modes = listOf(
-                    Triple(4, "Шумодав", Icons.Default.Headphones),
-                    Triple(1, "Выкл", Icons.Default.NoiseControlOff),
-                    Triple(2, "Прозрачн.", Icons.Default.Hearing)
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().height(54.dp)) {
+                val items = listOf(
+                    Triple(2, "Шумодав", Icons.Rounded.NoiseAware),
+                    Triple(1, "Выкл", Icons.Rounded.NoiseControlOff),
+                    Triple(4, "Прозрачн.", Icons.Rounded.Hearing)
                 )
-                modes.forEachIndexed { index, (code, label, icon) ->
+                items.forEachIndexed { idx, (code, label, ic) ->
                     SegmentedButton(
                         selected = ancMode == code,
                         onClick = { scope.launch { BudsProtocol.setAncMode(code) } },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                        icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        shape = SegmentedButtonDefaults.itemShape(index = idx, count = items.size),
+                        icon = { Icon(ic, contentDescription = null) }
                     ) {
-                        Text(label, maxLines = 1)
+                        Text(label, fontWeight = FontWeight.SemiBold)
                     }
                 }
-            }
-
-            // Глубина шумодава / пресет (cat=06 op=04: 02 / 01 / 00)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val levels = listOf(2 to "Макс (02)", 1 to "Средний (01)", 0 to "Мин (00)")
-                levels.forEachIndexed { index, (lvl, title) ->
-                    SegmentedButton(
-                        selected = ancLevel == lvl,
-                        onClick = { scope.launch { BudsProtocol.setAncLevel(lvl) } },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = levels.size)
-                    ) {
-                        Text(title)
-                    }
-                }
-            }
-
-            // Быстрые переключатели из твоего лога (cat=00 и cat=01)
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.SportsEsports, contentDescription = null)
-                            Column {
-                                Text("Игровой режим (cat=00)", fontWeight = FontWeight.Medium)
-                                Text("Минимальная задержка", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                        Switch(
-                            checked = gameMode,
-                            onCheckedChange = { scope.launch { BudsProtocol.setGameMode(it) } }
-                        )
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Мультипоинт / Фича 2 (cat=01)", fontWeight = FontWeight.Medium)
-                            Text("Два устройства (01 01 01 01 XX)", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Switch(
-                            checked = dualConn,
-                            onCheckedChange = { scope.launch { BudsProtocol.setDualConnection(it) } }
-                        )
-                    }
-                }
-            }
-
-            // Разрешение на показ поверх всех окон при открытии кейса
-            if (!Settings.canDrawOverlays(context)) {
-                FilledTonalButton(
-                    onClick = {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text("Разрешить авто-попап при открытии кейса")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun BatteryCard(title: String, percent: Int, modifier: Modifier = Modifier) {
-    ElevatedCard(
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(title, style = MaterialTheme.typography.labelMedium)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.BatteryChargingFull,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Text(
-                    "$percent%",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     }

@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
 
-data class BudsBattery(val left: Int = 95, val right: Int = 95, val case: Int = 80)
+data class BudsBattery(val left: Int = 100, val right: Int = 100, val case: Int = 100)
 
 object BudsProtocol {
     private var socket: BluetoothSocket? = null
@@ -20,27 +20,19 @@ object BudsProtocol {
 
     val connected = MutableStateFlow(false)
     val deviceName = MutableStateFlow("OnePlus Buds 4")
-    val ancMode = MutableStateFlow(4) // 4 = ANC, 1 = Off, 2 = Transparency
-    val ancLevel = MutableStateFlow(2) // 2 = Max, 1 = Mid, 0 = Low
-    val gameMode = MutableStateFlow(false)
-    val dualConn = MutableStateFlow(true)
+    // 2 = Шумодав, 1 = Выкл, 4 = Прозрачность (поменяли местами 2 и 4)
+    val ancMode = MutableStateFlow(2)
     val battery = MutableStateFlow(BudsBattery())
 
     private fun buildPacket(cat: Int, op: Int, payload: ByteArray): ByteArray {
         val plen = payload.size
         val len = 7 + plen
         val s = seq++
-        val header = byteArrayOf(
-            0xAA.toByte(),
-            len.toByte(),
-            0x00, 0x00,
-            cat.toByte(),
-            op.toByte(),
-            s,
-            (plen and 0xFF).toByte(),
-            ((plen shr 8) and 0xFF).toByte()
-        )
-        return header + payload
+        return byteArrayOf(
+            0xAA.toByte(), len.toByte(), 0x00, 0x00,
+            cat.toByte(), op.toByte(), s,
+            (plen and 0xFF).toByte(), ((plen shr 8) and 0xFF).toByte()
+        ) + payload
     }
 
     @SuppressLint("MissingPermission")
@@ -56,7 +48,6 @@ object BudsProtocol {
 
             deviceName.value = device.name ?: "OnePlus Buds 4"
 
-            // Вызов скрытого метода createRfcommSocket(15) — именно 15 канал из лога (DLCI 0x1f)
             val m = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
             val s = m.invoke(device, 15) as BluetoothSocket
             s.connect()
@@ -65,9 +56,8 @@ object BudsProtocol {
             inStream = s.inputStream
             connected.value = true
 
-            // Инит-пакет при открытии приложения: cat=0f op=04 payload=01
             sendRaw(0x0F, 0x04, byteArrayOf(0x01))
-            // Запрос батареи/состояния из лога: cat=0c op=01 payload=02 01
+            sendRaw(0x0C, 0x01, byteArrayOf(0x03, 0x01))
             sendRaw(0x0C, 0x01, byteArrayOf(0x02, 0x01))
             listenLoop()
             true
@@ -94,24 +84,25 @@ object BudsProtocol {
     }
 
     private fun parseIncoming(data: ByteArray) {
-        // Парсинг уведомлений о режиме и заряде
         var i = 0
         while (i + 9 <= data.size) {
             if (data[i] != 0xAA.toByte()) { i++; continue }
             val cat = data[i + 4].toInt() and 0xFF
-            val op = data[i + 5].toInt() and 0xFF
             val plen = (data[i + 7].toInt() and 0xFF) or ((data[i + 8].toInt() and 0xFF) shl 8)
             if (i + 9 + plen <= data.size) {
                 val payload = data.copyOfRange(i + 9, i + 9 + plen)
-                // Если пришёл ответ по батарее (cat=0c) или статус (cat=04)
                 if (cat == 0x04 && payload.size >= 3 && payload[0] == 0x01.toByte() && payload[1] == 0x01.toByte()) {
                     ancMode.value = payload[2].toInt() and 0xFF
                 }
-                if (cat == 0x0C && payload.size >= 5) {
-                    val l = (payload.getOrNull(2)?.toInt() ?: 95).coerceIn(1, 100)
-                    val r = (payload.getOrNull(3)?.toInt() ?: 95).coerceIn(1, 100)
-                    val c = (payload.getOrNull(4)?.toInt() ?: 80).coerceIn(0, 100)
-                    battery.value = BudsBattery(l, r, c)
+                if (cat == 0x0C && payload.size >= 4) {
+                    // Ищем реальные значения заряда (от 10 до 100), пропуская заголовки TLV (01, 02, 03, 06, 00)
+                    val vals = payload.map { it.toInt() and 0xFF }.filter { it in 10..100 }
+                    if (vals.size >= 2) {
+                        val l = vals[0]
+                        val r = vals[1]
+                        val c = vals.getOrElse(2) { battery.value.case }
+                        battery.value = BudsBattery(l, r, c)
+                    }
                 }
                 i += 9 + plen
             } else break
@@ -127,27 +118,8 @@ object BudsProtocol {
         }
     }
 
-    // cat=04 op=04 payload=01 01 XX (04, 01, 02)
     suspend fun setAncMode(mode: Int) {
         ancMode.value = mode
         sendRaw(0x04, 0x04, byteArrayOf(0x01, 0x01, mode.toByte()))
-    }
-
-    // cat=06 op=04 payload=XX (02, 01, 00)
-    suspend fun setAncLevel(level: Int) {
-        ancLevel.value = level
-        sendRaw(0x06, 0x04, byteArrayOf(level.toByte()))
-    }
-
-    // cat=00 op=04 payload=01/00
-    suspend fun setGameMode(enabled: Boolean) {
-        gameMode.value = enabled
-        sendRaw(0x00, 0x04, byteArrayOf(if (enabled) 0x01 else 0x00))
-    }
-
-    // cat=01 op=04 payload=01 01 01 01 01/00
-    suspend fun setDualConnection(enabled: Boolean) {
-        dualConn.value = enabled
-        sendRaw(0x01, 0x04, byteArrayOf(0x01, 0x01, 0x01, 0x01, if (enabled) 0x01 else 0x00))
     }
 }
