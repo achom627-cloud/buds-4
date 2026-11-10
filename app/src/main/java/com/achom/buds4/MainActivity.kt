@@ -24,17 +24,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Hearing
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.NoiseAware
 import androidx.compose.material.icons.rounded.NoiseControlOff
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -75,6 +73,8 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
     val connected by BudsProtocol.connected.collectAsState()
     val name by BudsProtocol.deviceName.collectAsState()
     val ancMode by BudsProtocol.ancMode.collectAsState()
+    val eqMode by BudsProtocol.eqMode.collectAsState()
+    val findMyBuds by BudsProtocol.findMyBuds.collectAsState()
     val battery by BudsProtocol.battery.collectAsState()
 
     val permLauncher = rememberLauncherForActivityResult(
@@ -100,6 +100,12 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
     val activeRowColor = Color(0xE63C404B)
     val barFillColor = Color(0xFFC6C5D6)
 
+    val eqTitle = when (eqMode) {
+        1 -> "EQ: Серенада"
+        2 -> "EQ: Басы"
+        else -> "EQ: Сбалансир."
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -122,7 +128,6 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
-            // 1. Заголовок и пилюли статуса (как "Chumpy / Доброе утро / Подключено" в референсе)
             Column(
                 modifier = Modifier.padding(horizontal = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -145,16 +150,15 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Пилюля статуса подключения
                     Surface(
                         shape = CircleShape,
                         color = Color(0xCC1E1F24),
                         modifier = Modifier.clickable { scope.launch { BudsProtocol.connect(null) } }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -163,7 +167,7 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                                     .background(if (connected) Color.White else Color(0xFF8E9199))
                             )
                             Text(
-                                text = if (connected) "Подключено" else "Подключить",
+                                text = if (connected) "В сети" else "Коннект",
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -171,24 +175,27 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Пилюля канала
                     Surface(
                         shape = CircleShape,
-                        color = Color(0xCC141416)
+                        color = Color(0xCC141416),
+                        modifier = Modifier.clickable {
+                            val nextEq = (eqMode + 1) % 3
+                            scope.launch { BudsProtocol.setEqMode(nextEq) }
+                        }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.GraphicEq,
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.85f),
+                                tint = Color.White.copy(alpha = 0.9f),
                                 modifier = Modifier.size(15.dp)
                             )
                             Text(
-                                text = "RFCOMM 15",
+                                text = eqTitle,
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -196,33 +203,35 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Кнопка-точки (переподключение / тест попапа)
                     Surface(
                         shape = CircleShape,
-                        color = Color(0xCC141416),
+                        color = if (findMyBuds) Color(0xFFE5534B) else Color(0xCC141416),
                         modifier = Modifier.clickable {
-                            if (!Settings.canDrawOverlays(context)) {
-                                context.startActivity(
-                                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-                                )
-                            } else {
-                                scope.launch { BudsProtocol.connect(null) }
-                            }
+                            scope.launch { BudsProtocol.setFindMyBuds(!findMyBuds) }
                         }
                     ) {
-                        Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
                             Icon(
-                                Icons.Rounded.MoreHoriz,
+                                Icons.Rounded.VolumeUp,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = if (findMyBuds) "Стоп" else "Поиск",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
                 }
             }
 
-            // 2. Карточка батареи со столбиками (в стиле графика "Эта неделя" из референса)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -248,7 +257,7 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Заряд комплекса",
+                                text = "Заряд наушников",
                                 color = Color.White,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
@@ -269,19 +278,23 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        BatteryBarItem("Л", battery.left, barFillColor)
-                        BatteryBarItem("П", battery.right, barFillColor)
-                        BatteryBarItem("Кейс", battery.case, barFillColor)
+                        BatteryBarItem("Левый", "${battery.left}%", battery.left, barFillColor)
+                        BatteryBarItem("Правый", "${battery.right}%", battery.right, barFillColor)
+                        BatteryBarItem(
+                            "Кейс",
+                            battery.case?.let { "$it%" } ?: "Закрыт",
+                            battery.case ?: 100,
+                            barFillColor.copy(alpha = if (battery.case != null) 1f else 0.35f)
+                        )
                     }
                 }
             }
 
-            // 3. Склеенный список режимов (в стиле списка серверов из референса)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 val modes = listOf(
-                    Triple(2, "Шумоподавление", "ANC · максимальная тишина"),
-                    Triple(4, "Прозрачность", "Passthrough · слышно окружение"),
-                    Triple(1, "Выключено", "Off · пассивная изоляция")
+                    Triple(4, "Шумоподавление", "ANC · максимальная тишина"),
+                    Triple(2, "Прозрачность", "Passthrough · слышно окружение"),
+                    Triple(1, "Выключено", "Off · без обработки звука")
                 )
                 modes.forEachIndexed { index, (code, title, sub) ->
                     val shape = when (index) {
@@ -295,8 +308,8 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                         animationSpec = tween(220)
                     )
                     val icon = when (code) {
-                        2 -> Icons.Rounded.NoiseAware
-                        4 -> Icons.Rounded.Hearing
+                        4 -> Icons.Rounded.NoiseAware
+                        2 -> Icons.Rounded.Hearing
                         else -> Icons.Rounded.NoiseControlOff
                     }
 
@@ -343,16 +356,21 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                 }
             }
 
-            // 4. Светлая капсула с живой синусоидой (как внизу главного экрана референса)
             WaveCapsule(
                 ancMode = ancMode,
                 onCycleMode = {
-                    val next = when (ancMode) {
-                        2 -> 4
-                        4 -> 1
-                        else -> 2
+                    if (!Settings.canDrawOverlays(context)) {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                        )
+                    } else {
+                        val next = when (ancMode) {
+                            4 -> 2
+                            2 -> 1
+                            else -> 4
+                        }
+                        scope.launch { BudsProtocol.setAncMode(next) }
                     }
-                    scope.launch { BudsProtocol.setAncMode(next) }
                 }
             )
         }
@@ -360,8 +378,8 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun BatteryBarItem(label: String, percent: Int, barColor: Color) {
-    val clamped = percent.coerceIn(8, 100)
+fun BatteryBarItem(label: String, valueText: String, percent: Int, barColor: Color) {
+    val clamped = percent.coerceIn(10, 100)
     val animatedFrac by animateFloatAsState(
         targetValue = clamped / 100f,
         animationSpec = tween(500)
@@ -373,7 +391,7 @@ fun BatteryBarItem(label: String, percent: Int, barColor: Color) {
     ) {
         Box(
             modifier = Modifier
-                .width(38.dp)
+                .width(42.dp)
                 .weight(1f),
             contentAlignment = Alignment.BottomCenter
         ) {
@@ -384,7 +402,6 @@ fun BatteryBarItem(label: String, percent: Int, barColor: Color) {
                     .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
                     .background(barColor)
             ) {
-                // Светлая шапка столбика как на скрине "Эта неделя"
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -395,7 +412,7 @@ fun BatteryBarItem(label: String, percent: Int, barColor: Color) {
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "$label · $percent%",
+            text = "$label · $valueText",
             color = Color(0xFFB5B7C0),
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold
@@ -461,10 +478,9 @@ fun WaveCapsule(ancMode: Int, onCycleMode: () -> Unit) {
         ),
         label = "phase"
     )
-    // В режиме шумодава волна почти гаснет, в прозрачности — максимальная
     val targetAmp = when (ancMode) {
-        2 -> 0.18f
-        4 -> 1.0f
+        4 -> 0.18f
+        2 -> 1.0f
         else -> 0.55f
     }
     val ampFactor by animateFloatAsState(targetValue = targetAmp, animationSpec = tween(400), label = "amp")

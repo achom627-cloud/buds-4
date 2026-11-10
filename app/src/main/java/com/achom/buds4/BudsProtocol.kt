@@ -20,11 +20,8 @@ object BudsProtocol {
 
     val connected = MutableStateFlow(false)
     val deviceName = MutableStateFlow("OnePlus Buds 4")
-    // Из свежего лога: 4 = Шумодав/Адаптив, 2 = Прозрачность, 1 = Выкл
-    val ancMode = MutableStateFlow(4)
-    // Эквалайзер (cat=06 op=04): 0 = Сбалансированный, 1 = Серенада, 2 = Басы
-    val eqMode = MutableStateFlow(0)
-    // Поиск наушников (cat=00 op=04): true = пищит (01), false = выкл (00)
+    val ancMode = MutableStateFlow(4) // 4 = Шумодав, 2 = Прозрачность, 1 = Выкл
+    val eqMode = MutableStateFlow(0)  // 0 = Сбалансированный, 1 = Серенада, 2 = Басы
     val findMyBuds = MutableStateFlow(false)
     val battery = MutableStateFlow(BudsBattery())
 
@@ -60,9 +57,7 @@ object BudsProtocol {
             inStream = s.inputStream
             connected.value = true
 
-            // Handshake из лога (#828): cat=0f op=04 payload=01
             sendRaw(0x0F, 0x04, byteArrayOf(0x01))
-            // Запрос текущего пресета эквалайзера (#1798): cat=0f op=01
             sendRaw(0x0F, 0x01, byteArrayOf())
             listenLoop()
             true
@@ -92,7 +87,6 @@ object BudsProtocol {
         var i = 0
         while (i + 9 <= data.size) {
             if (data[i] != 0xAA.toByte()) { i++; continue }
-            // Пропускаем varint длину (1 или 2 байта)
             var j = i + 1
             var len = 0
             var shift = 0
@@ -117,7 +111,6 @@ object BudsProtocol {
     }
 
     private fun handlePacket(cat: Int, op: Int, p: ByteArray) {
-        // 1. Уведомление батареи (#840, #916): cat=04 op=02 | 01 02 01 64 02 64 (или 01 03 01 LL 02 RR 03 CC)
         if (cat == 0x04 && op == 0x02 && p.size >= 6 && p[0] == 0x01.toByte()) {
             val count = p[1].toInt() and 0xFF
             var l = battery.value.left
@@ -141,18 +134,16 @@ object BudsProtocol {
             battery.value = BudsBattery(l, r, c)
         }
 
-        // 2. Уведомление смены режима с наушников (#943, #996, #1030): cat=04 op=02 | 03 01 01 XX YY
         if (cat == 0x04 && op == 0x02 && p.size >= 5 && p[0] == 0x03.toByte() && p[1] == 0x01.toByte() && p[2] == 0x01.toByte()) {
             val b3 = p[3].toInt() and 0xFF
             val b4 = p[4].toInt() and 0xFF
             when {
-                b3 == 0x08 && b4 == 0x00 -> ancMode.value = 1 // Выкл
-                b3 == 0x10 && b4 == 0x00 -> ancMode.value = 2 // Прозрачность
-                b4 == 0x01 -> ancMode.value = 4               // Шумодав / Адаптив
+                b3 == 0x08 && b4 == 0x00 -> ancMode.value = 1
+                b3 == 0x10 && b4 == 0x00 -> ancMode.value = 2
+                b4 == 0x01 -> ancMode.value = 4
             }
         }
 
-        // 3. Уведомление эквалайзера (#1795, #1826, #1851): cat=04 op=05 | XX
         if (cat == 0x04 && op == 0x05 && p.isNotEmpty()) {
             eqMode.value = (p[0].toInt() and 0xFF).coerceIn(0, 2)
         }
@@ -167,19 +158,16 @@ object BudsProtocol {
         }
     }
 
-    // 1 = Выкл, 4 = Шумодав, 2 = Прозрачность
     suspend fun setAncMode(mode: Int) {
         ancMode.value = mode
         sendRaw(0x04, 0x04, byteArrayOf(0x01, 0x01, mode.toByte()))
     }
 
-    // 0 = Сбалансированный, 1 = Серенада, 2 = Басы
     suspend fun setEqMode(preset: Int) {
         eqMode.value = preset
         sendRaw(0x06, 0x04, byteArrayOf(preset.toByte()))
     }
 
-    // true = 01 (вкл пищалку), false = 00 (выкл пищалку)
     suspend fun setFindMyBuds(finding: Boolean) {
         findMyBuds.value = finding
         sendRaw(0x00, 0x04, byteArrayOf(if (finding) 0x01 else 0x00))
