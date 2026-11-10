@@ -28,7 +28,6 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.MicOff
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NoiseAware
 import androidx.compose.material.icons.rounded.NoiseControlOff
 import androidx.compose.material.icons.rounded.Settings
@@ -38,19 +37,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,7 +97,6 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
 
     val cardGlass = Color(0xD9141416)
     val cardBorder = Color(0x1AFFFFFF)
-    val activeRowColor = Color(0xE63C404B)
 
     Box(
         modifier = Modifier
@@ -123,7 +120,6 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Хедер "OnePlus Buds 4"
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -149,7 +145,6 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                 }
             }
 
-            // 2. Карточка с 3D-моделями (Наушники + Кейс)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -167,39 +162,31 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 3D-отрисовка левого и правого наушников (через Canvas, имитируя 3D блики по референсу)
                         Canvas(modifier = Modifier.size(100.dp, 80.dp)) {
-                            // Левый earpiece
                             drawCircle(Color(0xFF28292E), radius = 22.dp.toPx(), center = Offset(25.dp.toPx(), 40.dp.toPx()))
                             drawCircle(Color(0xFF42454F), radius = 18.dp.toPx(), center = Offset(25.dp.toPx(), 40.dp.toPx()))
-                            drawCircle(Color(0xFFE2E4EB), radius = 8.dp.toPx(), center = Offset(23.dp.toPx(), 36.dp.toPx())) // блик
+                            drawCircle(Color(0xFFE2E4EB), radius = 8.dp.toPx(), center = Offset(23.dp.toPx(), 36.dp.toPx()))
 
-                            // Правый earpiece
                             drawCircle(Color(0xFF28292E), radius = 22.dp.toPx(), center = Offset(75.dp.toPx(), 40.dp.toPx()))
                             drawCircle(Color(0xFF42454F), radius = 18.dp.toPx(), center = Offset(75.dp.toPx(), 40.dp.toPx()))
-                            drawCircle(Color(0xFFE2E4EB), radius = 8.dp.toPx(), center = Offset(73.dp.toPx(), 36.dp.toPx())) // блик
+                            drawCircle(Color(0xFFE2E4EB), radius = 8.dp.toPx(), center = Offset(73.dp.toPx(), 36.dp.toPx()))
                         }
 
-                        // 3D-отрисовка открытого кейса (по референсу)
                         Canvas(modifier = Modifier.size(90.dp)) {
-                            // Тело кейса
                             drawRoundRect(
                                 color = Color(0xFF1E2024),
                                 size = size,
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(32.dp.toPx())
+                                cornerRadius = CornerRadius(32.dp.toPx())
                             )
-                            // Внутренний овал
                             drawOval(
                                 color = Color(0xFF121316),
                                 topLeft = Offset(8.dp.toPx(), 8.dp.toPx()),
-                                size = androidx.compose.ui.geometry.Size(size.width - 16.dp.toPx(), size.height - 16.dp.toPx())
+                                size = Size(size.width - 16.dp.toPx(), size.height - 16.dp.toPx())
                             )
-                            // Диод
                             drawCircle(Color(0xFF56E39F), radius = 3.dp.toPx(), center = Offset(size.width / 2f, size.height - 18.dp.toPx()))
                         }
                     }
 
-                    // Батарейный прогресс внизу карточки
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(64.dp)) {
                             CircularProgressIndicator(
@@ -228,7 +215,6 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                 }
             }
 
-            // 3. Название девайса
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -243,7 +229,6 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                 Text(name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
 
-            // 4. Режимы звука (Шумоподавление ANC / Выкл / Прозрачность)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -264,7 +249,7 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                 ) {
                     SoundModeButton(
                         title = "Шумоподавление",
-                        sub = "Active Noise Cancellation (ANC)",
+                        sub = "ANC",
                         icon = Icons.Rounded.NoiseAware,
                         selected = ancMode == 4,
                         modifier = Modifier.weight(1f),
@@ -272,7 +257,7 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                     )
                     SoundModeButton(
                         title = "Выкл",
-                        sub = "Off · 01 01 01",
+                        sub = "Off",
                         icon = Icons.Rounded.NoiseControlOff,
                         selected = ancMode == 1,
                         modifier = Modifier.weight(1f),
@@ -280,44 +265,13 @@ fun WebShiftStyleBudsScreen(isPopup: Boolean, onDismiss: () -> Unit) {
                     )
                     SoundModeButton(
                         title = "Прозрачность",
-                        sub = "Transparency · 01 01 02",
+                        sub = "Transparency",
                         icon = Icons.Rounded.Hearing,
                         selected = ancMode == 2,
                         modifier = Modifier.weight(1f),
                         onClick = { scope.launch { BudsProtocol.setAncMode(2) } }
                     )
                 }
-            }
-
-            // 5. Жесты нажатия
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardGlass)
-                    .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("Жесты нажатия", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                GestureRow("Левый", "Режим звука", icon = Icons.Rounded.TouchApp)
-                GestureRow("Правый", "Голосовой ассистент", icon = Icons.Rounded.TouchApp)
-            }
-
-            // 6. Управление звонками
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardGlass)
-                    .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("Управление звонками", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                GestureRow("Ответить", "Answer call", icon = Icons.Rounded.Call)
-                GestureRow("Выключить микрофон", "Mute microphone", icon = Icons.Rounded.MicOff)
-                GestureRow("Повесить трубку", "End call", icon = Icons.Rounded.CallEnd)
             }
         }
     }
@@ -346,41 +300,7 @@ fun SoundModeButton(
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         Text(title, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        Text(sub, color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp, maxLines = 1)
-    }
-}
-
-@Composable
-fun GestureRow(label: String, action: String, icon: ImageVector) {
-    var enabled by remember { mutableStateOf(true) }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(32.dp).clip(CircleShape).background(Color(0xFF222328)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = Color(0xFFA0A3AD), modifier = Modifier.size(16.dp))
-            }
-            Column {
-                Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(action, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
-            }
-        }
-        Switch(
-            checked = enabled,
-            onCheckedChange = { enabled = it },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF3C404B)
-            )
-        )
+        Text(sub, color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, maxLines = 1)
     }
 }
 
